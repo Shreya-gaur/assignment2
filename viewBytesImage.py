@@ -34,9 +34,11 @@ def main():
 
 	parser = argparse.ArgumentParser(description='Prepare Image for CUDA Programming Lab 2')
 	parser.add_argument("-f", dest="filename", 	required=False, help="input image file path", metavar="FILE")
+	parser.add_argument("-o", dest="output", required=False, help="output tiff image file path", metavar="FILE")
 	args = parser.parse_args()
 
 	imgFilePath = args.filename
+	imgOutFilePath = args.output
 	if (not hasGUI) :
 		if imgFilePath == None :
 			parser.print_help()
@@ -48,7 +50,10 @@ def main():
 			imgFilePath = filedialog.askopenfilename( initialdir=os.getcwd() )
 
 	img = createRawBytes(imgFilePath)
-
+	# save image on the give file path
+	
+	img.save(imgOutFilePath)
+	
 	if hasGUI :
 		img.show()
 		displayImage = img

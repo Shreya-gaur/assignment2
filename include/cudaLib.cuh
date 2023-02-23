@@ -109,9 +109,9 @@
 	 * @param imgDim 	ImageDim			struct converying the diemnsionality of inPixels
 	 * @param outPixels uint8_t *			pointer to output of medianFilter
 	 * @param args 		MedianFilterArgs	struct with settings for median filter
-	 * @return int 
+	 * @return void
 	 */
-	extern int medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, 
+	extern __global__ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, 
 		uint8_t * outPixels, MedianFilterArgs args);
 
 	/**
@@ -123,7 +123,7 @@
 	 *								pointed to by array is organized
 	 * @return int 
 	 */
-	extern int sortPixels_gpu (uint8_t * array, dim3 arrayDim);
+	extern __device__ uint8_t * sortPixels_gpu (uint8_t * array, dim3 arrayDim);
 
 	/**
 	 * @brief CPU entrypoint for GPU based pool operation
@@ -147,7 +147,7 @@
 	 * @param args 		PoolLayerArgs	parameters of pool operation
 	 * @return int 
 	 */
-	extern int poolLayer_gpu (float * input, TensorShape inShape,
+	extern __global__ void poolLayer_gpu (float * input, TensorShape inShape,
 		float * output, TensorShape outShape, PoolLayerArgs args);
 
 #endif

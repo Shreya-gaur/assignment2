@@ -262,7 +262,11 @@ int medianFilter_cpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels, 
 					for (uint32_t filCol = 0; filCol < args.filterW; ++ filCol) {
 						inRow = outRow - (args.filterH - 1) / 2 + filRow;
 						inCol = outCol - (args.filterW - 1) / 2 + filCol;
-						window[filRow * args.filterW + filCol] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channel];
+
+						if(inRow >= 0 && inRow < imgDim.height && 
+								inCol >= 0 && inCol < imgDim.width){
+							window[filRow * args.filterW + filCol] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channel];
+						}	
 					}
 				}
 
@@ -303,15 +307,17 @@ std::ostream& operator<< (std::ostream &o,PoolOp op) {
 }
 
 int poolLayer_cpu (float * input, TensorShape inShape, 
-	float * output, TensorShape outShape, PoolLayerArgs args) {
-	float poolPick;
+				float * output, TensorShape outShape, PoolLayerArgs args) {
 	
 	uint32_t poolH = args.poolH;
 	uint32_t poolW = args.poolW;
-	//	STUDENT: Calculate or unpack TensorShapes
-	std::cout << "Lazy, you are! ... ";
-	uint32_t outputH = 1;		
-	uint32_t outputW = 1;
+
+	uint32_t strideH = args.strideH;
+	uint32_t strideW = args.strideW;
+
+	uint32_t outputH = outShape.height;
+	uint32_t outputW = outShape.width;
+
 	uint32_t row, col;
 
 	std::cout << args.opType << " : " << inShape.height << " x " << inShape.width 
@@ -320,38 +326,116 @@ int poolLayer_cpu (float * input, TensorShape inShape,
 
 	for (uint32_t outRow = 0; outRow < outputH; ++ outRow) {
 		for (uint32_t outCol = 0; outCol < outputW; ++ outCol) {
-			//	STUDENT: Assign to first value of pool area
-			// poolPick = 0; 
 
-			for (uint32_t poolRow = 0; poolRow < args.poolH; ++ poolRow) {
-				for (uint32_t poolCol = 0; poolCol < args.poolW; ++ poolCol) {
+			//	STUDENT: Assign to first value of pool area
+			float poolPick = input[outRow * strideH * inShape.width + outCol * strideW];
+
+			for (uint32_t poolRow = 0; poolRow < poolH; ++ poolRow) {
+				for (uint32_t poolCol = 0; poolCol < poolW; ++ poolCol) {
+					
 					//	STUDENT: Calculate row and col of element here
+
+					row = (outRow * strideH) + poolRow;
+					col = (outCol * strideW) + poolCol;
+
+					float value = input[row * inShape.width + col];
+
+					// std::cout << "Considered : " << value << " @ (" << row << ", "<< col << ")" << std::endl;
+					
 					switch (args.opType)
 					{
 					//	STUDENT: Add cases and complete pooling code for all 3 options
 					case PoolOp::MaxPool:
-					
+
+						if (value > poolPick)
+						{
+							poolPick = value;
+						}
+						break;
+
+					case PoolOp::MinPool:
+
+						if (value < poolPick)
+						{
+							poolPick = value;
+						}
+						break;
+
+					case PoolOp::AvgPool:
+
+						poolPick += value;
+						poolPick = poolPick/(poolH * poolW);
+						break;
+
 					default:
 						std::cout << "Pick max from pool, you must!\n";
-						return 0;	//	STUDENT: Remove this as reqd.
+						return 0;
 						break;
 					}
 				}
 			}
+
+			output[outRow * outputW + outCol] = poolPick;
+
 			std::cout << poolPick << " @ (" << outRow << ", " << outCol << ")\n";
+
+			std::cout << "\n";
+
 		}
 	}
+
 }
 
 int runCpuPool (TensorShape inShape, PoolLayerArgs poolArgs) {
 	
 	srand(time(NULL));
 
-	//	STUDENT: Initialize required memories));
-	std::cout << "Set Tensors to stun !!";
+	float* inMatrix = (float*) malloc(inShape.height * inShape.width * sizeof(float));
 
-	//	STUDENT: call pool function
-	//	poolLayer_cpu(inMatrix, inShape, outMatrix, outShape, poolArgs);
+	if (inMatrix == NULL){
+		std::cout<< "ERROR ERROR!!!!! RUN FOR THE HILLS!!!!!";
+		return 0;
+	} 
+
+	TensorShape_t outShape;
+
+	outShape.height = (inShape.height - poolArgs.poolH) / poolArgs.strideH + 1;		
+	outShape.width = (inShape.width - poolArgs.poolW) / poolArgs.strideW + 1;
+	outShape.channels = inShape.channels;
+
+	std::cout<< "Output Dimensions: " << outShape.height << " * " << outShape.width <<"\n";
+
+	float* outMatrix =  (float*) malloc(outShape.height * outShape.width * sizeof(float));
+
+	if (outMatrix == NULL){
+		std::cout<< "ERROR ERROR!!!!! RUN FOR THE HILLS!!!!!";
+		return 0;
+	} 
+
+	std::cout << "Actual Matrix \n";
+
+	for (int i = 0; i < inShape.height; i++){
+		for(int j = 0; j < inShape.width; j++){
+			inMatrix[i * inShape.width + j] = (rand() / (RAND_MAX + 1.)) * 100;
+			std::cout << inMatrix[i * inShape.width + j] << " ";
+		}
+		std::cout << "\n";
+	}
+
+	// STUDENT: call pool function
+	poolLayer_cpu(inMatrix, inShape, outMatrix, outShape, poolArgs);
+
+	for (int i = 0; i < outShape.height; i++){
+		for(int j = 0; j < outShape.width; j++){
+
+			std::cout << outMatrix[i*outShape.width + j] << "@ (" << i << ", " << j << ")" << outShape.width << "\n";
+
+		}
+		// std::cout << "\n";
+	}
+
+	free(inMatrix);
+	free(outMatrix);
 
 	return 0;
 }

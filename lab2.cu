@@ -97,10 +97,11 @@ int main(int argc, char** argv) {
 			break;
 			
 		case 9:
-			std::cout << "Call Pool GPU, you must! \n\n";
-			//  std::cout << "Running Pool GPU! \n\n";
-			//	STUDENT: Call runGpuPool here
-			//  std::cout << "\n\n ... Done!\n";
+			std::cout << "Running Pool GPU! \n\n";
+			inShape = {32, 32};
+			poolArgs = {PoolOp::MaxPool, 4, 4, 1, 1};
+			runGpuPool(inShape, poolArgs);			
+			std::cout << "\n\n ... Done!\n";
 			break;
 
 		default:
