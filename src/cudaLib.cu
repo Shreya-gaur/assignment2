@@ -140,20 +140,17 @@ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels,
 
 	int row_gl = blockDim.y * blockIdx.y + threadIdx.y;
 	int col_gl = blockDim.x * blockIdx.x + threadIdx.x;
-	// int channels_gl = blockDim.z * blockIdx.y + threadIdx.z;
+	int channels_gl = blockDim.z * blockIdx.z + threadIdx.z;
 
 	int count = 0;
 
 	uint32_t inRow, inCol;
 
-	uint8_t window_0[16];
-	uint8_t * sorted_window_0 = window_0;
-	uint8_t window_1[16];
-	uint8_t * sorted_window_1 = window_1;
-	uint8_t window_2[16];
-	uint8_t * sorted_window_2 = window_2;
+	// __shared__ uint8_t window[MAX_WINDOW_SIZE][MAX_WINDOW_SIZE][3];
+	uint8_t window[MAX_WINDOW_SIZE];
+	uint8_t * sorted_window = window;
 
-	if (col_gl < imgDim.width && row_gl < imgDim.height) {
+	if (col_gl < imgDim.width && row_gl < imgDim.height && channels_gl < 4) {
 
 		for (uint32_t filRow = 0; filRow < args.filterH; ++ filRow) {
 			for (uint32_t filCol = 0; filCol < args.filterW; ++ filCol) {
@@ -163,34 +160,19 @@ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels,
 				if(inRow >= 0 && inRow < imgDim.height && 
 					inCol >= 0 && inCol < imgDim.width){
 
-					window_0[count] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + 0];
-					window_1[count] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + 1];
-					window_2[count] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + 2];
-
+					window[count] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channels_gl];
 					count++;
 
 				}
-
-				// else{
-
-				// 	window_0[count] = 0;
-				// 	window_1[count] = 0;
-				// 	window_2[count] = 0;
-
-				// }
 			}
 
 		}
 
-		dim3 arraydim(args.filterW * args.filterH);
+		dim3 arraydim(count);
 
-		sorted_window_0 = sortPixels_gpu(sorted_window_0, arraydim);
-		sorted_window_1 = sortPixels_gpu(sorted_window_1, arraydim);
-		sorted_window_2 = sortPixels_gpu(sorted_window_2, arraydim);
+		sorted_window = sortPixels_gpu(sorted_window, arraydim);
 
-		outPixels[imgDim.channels*(row_gl* imgDim.width + col_gl) + 0] = sorted_window_0[(args.filterH * args.filterW) / 2];
-		outPixels[imgDim.channels*(row_gl* imgDim.width + col_gl) + 1] = sorted_window_1[(args.filterH * args.filterW) / 2];
-		outPixels[imgDim.channels*(row_gl* imgDim.width + col_gl) + 2] = sorted_window_2[(args.filterH * args.filterW) / 2];
+		outPixels[imgDim.channels*(row_gl* imgDim.width + col_gl) + channels_gl] = sorted_window[(args.filterH * args.filterW) / 2];
 
 	}	
 }
@@ -213,8 +195,8 @@ int runGpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterAr
 
 	cudaMemcpy(imgData_d, imgData, imgSize * sizeof(uint8_t) , cudaMemcpyHostToDevice);
 
-	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 dimGrid(ceil((float)imgDim.width / (float)dimBlock.x), ceil((float)imgDim.height / (float)dimBlock.y, ceil((float))), ceil((float)dimBlock.z)/(float));
+	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE, 3);
+    dim3 dimGrid(ceil((float)imgDim.width / (float)dimBlock.x), ceil((float)imgDim.height / (float)dimBlock.y));
 	medianFilter_gpu<<<dimGrid, dimBlock>>>(imgData_d, imgDim, outData_d, args);
 
 	cudaMemcpy(outData, outData_d, imgSize * sizeof(uint8_t), cudaMemcpyDeviceToHost);
@@ -249,36 +231,40 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 				row = (row_gl * args.strideH) + poolRow;
 				col = (col_gl * args.strideW) + poolCol;
 
-				float value = input[row * inShape.width + col];
-				
-				switch (args.opType)
-				{
-				//	STUDENT: Add cases and complete pooling code for all 3 options
-				case PoolOp::MaxPool:
+				if(row >= 0 && row < inShape.height && 
+						col >= 0 && col < inShape.width){
 
-					if (value > poolPick)
-					{	
-						poolPick = value;
-					}
-					break;
-
-				case PoolOp::MinPool:
-
-					if (value < poolPick)
+					float value = input[row * inShape.width + col];
+					
+					switch (args.opType)
 					{
-						poolPick = value;
+					//	STUDENT: Add cases and complete pooling code for all 3 options
+					case PoolOp::MaxPool:
+
+						if (value > poolPick)
+						{	
+							poolPick = value;
+						}
+						break;
+
+					case PoolOp::MinPool:
+
+						if (value < poolPick)
+						{
+							poolPick = value;
+						}
+						break;
+
+					case PoolOp::AvgPool:
+
+						poolPick += value;
+						poolPick = poolPick/(args.poolH * args.poolW);
+						break;
+
+					default:
+						return;	
+						break;
 					}
-					break;
-
-				case PoolOp::AvgPool:
-
-					poolPick += value;
-					poolPick = poolPick/(args.poolH * args.poolW);
-					break;
-
-				default:
-					return;	
-					break;
 				}
 			}
 		}
