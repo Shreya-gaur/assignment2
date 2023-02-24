@@ -138,27 +138,56 @@ uint8_t * sortPixels_gpu (uint8_t * array, dim3 arrayDim){
 __global__ 
 void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels, MedianFilterArgs args) {
 
+	int row_l = threadIdx.y;
+	int col_l = threadIdx.x;
+	int channel_l = threadIdx.z;
+	
 	int row_gl = blockDim.y * blockIdx.y + threadIdx.y;
 	int col_gl = blockDim.x * blockIdx.x + threadIdx.x;
 	int channels_gl = blockDim.z * blockIdx.z + threadIdx.z;
 
 	int count = 0;
 
-	uint32_t inRow, inCol;
+	uint32_t inRow, inCol, blockRow, blockCol;
+
+	// __shared__ uint8_t sharedmem[BLOCK_SIZE+2][BLOCK_SIZE+2];
 
 	// __shared__ uint8_t window[MAX_WINDOW_SIZE][MAX_WINDOW_SIZE][3];
 	uint8_t window[MAX_WINDOW_SIZE];
 	uint8_t * sorted_window = window;
 
-	if (col_gl < imgDim.width && row_gl < imgDim.height && channels_gl < 4) {
+	// if row_l > 0 && row_l << BLOCK_SIZE && col_l > 0 && col_l < BLOCK_SIZE{
+	// 	sharedmem[row_l][col_l][channel_l] = inPixels[(row_gl * imgDim.width + col_gl) * imgDim.channels + channels_gl];
+	// }
 
+	// if ((tx_l == 0)&&((tx_g > 0))) smem[tx_l][ty_l+1] = Input_Image[ty_g*Image_Width + tx_g-1];      // --- left border
+    // else if ((tx_l == BLOCK_WIDTH-1)&&(tx_g < Image_Width - 1))         smem[tx_l+2][ty_l+1] = Input_Image[ty_g*Image_Width + tx_g+1];      // --- right border
+    // if ((ty_l == 0)&&(ty_g > 0)) {                                      smem[tx_l+1][ty_l]   = Input_Image[(ty_g-1)*Image_Width + tx_g];    // --- upper border
+    //         if ((tx_l == 0)&&((tx_g > 0)))                                  smem[tx_l]  [ty_l]   = Input_Image[(ty_g-1)*Image_Width + tx_g-1];  // --- top-left corner
+    //         else if ((tx_l == BLOCK_WIDTH-1)&&(tx_g < Image_Width - 1))     smem[tx_l+2][ty_l]   = Input_Image[(ty_g-1)*Image_Width + tx_g+1];  // --- top-right corner
+    //      } else if ((ty_l == BLOCK_HEIGHT-1)&&(ty_g < Image_Height - 1)) {  smem[tx_l+1][ty_l+2] = Input_Image[(ty_g+1)*Image_Width + tx_g];    // --- bottom border
+    //      if ((tx_l == 0)&&((tx_g > 0)))                                 smem[tx_l]  [ty_l+2] = Input_Image[(ty_g-1)*Image_Width + tx_g-1];  // --- bottom-left corder
+    //     else if ((tx_l == BLOCK_WIDTH-1)&&(tx_g < Image_Width - 1))     smem[tx_l+2][ty_l+2] = Input_Image[(ty_g+1)*Image_Width + tx_g+1];  // --- bottom-right corner
+    // }
+
+
+	// __syncthread();
+
+	if (col_gl < imgDim.width && row_gl < imgDim.height && channels_gl < 4) {
+		
 		for (uint32_t filRow = 0; filRow < args.filterH; ++ filRow) {
-			for (uint32_t filCol = 0; filCol < args.filterW; ++ filCol) {
-				inRow = row_gl + filRow;
-				inCol = col_gl + filCol;
+			for (uint32_t filCol = 0; filCol < args.filterH; ++ filCol) {
 				
+				// blockRow = row_l + filRow;
+				// blockCol = col_l + filCol;
+
+				inRow = row_gl - (args.filterH - 1)/2 + filRow;
+				inCol = col_gl - (args.filterW - 1)/2 + filCol;
+
 				if(inRow >= 0 && inRow < imgDim.height && 
 					inCol >= 0 && inCol < imgDim.width){
+
+					// window[count] = sharedmem[inRow][inCol][channels_gl];
 
 					window[count] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channels_gl];
 					count++;
@@ -183,6 +212,8 @@ int runGpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterAr
 	ImageDim imgDim;
 
 	uint8_t * imgData, * imgData_d;
+	
+	args = {7,7};
 
 	int bytesRead = loadBytesImage(imgPath, imgDim, &imgData);
 	int imgSize = imgDim.height * imgDim.width * imgDim.channels * imgDim.pixelSize;
@@ -227,7 +258,6 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 			for (uint32_t poolCol = 0; poolCol < args.poolW; ++ poolCol) {
 				
 				//	STUDENT: Calculate row and col of element here
-
 				row = (row_gl * args.strideH) + poolRow;
 				col = (col_gl * args.strideW) + poolCol;
 
@@ -239,31 +269,31 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 					switch (args.opType)
 					{
 					//	STUDENT: Add cases and complete pooling code for all 3 options
-					case PoolOp::MaxPool:
+						case PoolOp::MaxPool:
 
-						if (value > poolPick)
-						{	
-							poolPick = value;
-						}
-						break;
+							if (value > poolPick)
+							{	
+								poolPick = value;
+							}
+							break;
 
-					case PoolOp::MinPool:
+						case PoolOp::MinPool:
 
-						if (value < poolPick)
-						{
-							poolPick = value;
-						}
-						break;
+							if (value < poolPick)
+							{
+								poolPick = value;
+							}
+							break;
 
-					case PoolOp::AvgPool:
+						case PoolOp::AvgPool:
 
-						poolPick += value;
-						poolPick = poolPick/(args.poolH * args.poolW);
-						break;
+							poolPick += value;
+							poolPick = poolPick/(args.poolH * args.poolW);
+							break;
 
-					default:
-						return;	
-						break;
+						default:
+							return;	
+							break;
 					}
 				}
 			}
