@@ -263,8 +263,7 @@ int medianFilter_cpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels, 
 						inRow = outRow - (args.filterH - 1) / 2 + filRow;
 						inCol = outCol - (args.filterW - 1) / 2 + filCol;
 
-						if(inRow >= 0 && inRow < imgDim.height && 
-								inCol >= 0 && inCol < imgDim.width){
+						if(inRow < imgDim.height && inCol < imgDim.width){
 							window[filRow * args.filterW + filCol] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channel];
 						}	
 					}
@@ -290,7 +289,14 @@ int runCpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterAr
 	std::cout << "Size = " << imgSize << "\n";
 	uint8_t * outData = (uint8_t *) malloc(imgSize * sizeof(uint8_t));
 
+	auto tStart = std::chrono::high_resolution_clock::now();
+
 	medianFilter_cpu(imgData, imgDim, outData, args);
+
+	auto tEnd= std::chrono::high_resolution_clock::now();
+
+	std::chrono::duration<double> time_span = (tEnd- tStart);
+	std::cout << "It took " << time_span.count() << " seconds.";
 
 	writeBytesImage(outPath, imgDim, outData);
 	return 0;

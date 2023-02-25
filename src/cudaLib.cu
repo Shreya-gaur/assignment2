@@ -76,7 +76,8 @@ double estimatePi(uint64_t generateThreadCount, uint64_t sampleSize,
 
 
 #define BLOCK_SIZE 16
-#define MAX_WINDOW_SIZE 64
+#define MAX_WINDOW_WIDTH 7
+#define MAX_WINDOW_HEIGHT 7
 
 void query_device(){
 
@@ -121,25 +122,26 @@ uint8_t * sortPixels_gpu (uint8_t * array, dim3 arrayDim){
 	uint8_t tmp;
 	
 	for (int i = 0; i < arrayDim.x - 1; i++) {
-        for (int j = i+1; j < arrayDim.x; j++) {
-            if (array[i] > array[j]) { 
+		for (int j = i+1; j < arrayDim.x; j++) {
+			if (array[i] > array[j]) { 
 				//Swap Values.
-                tmp = array[i];
-                array[i] = array[j];
-                array[j] = tmp;
+				tmp = array[i];
+				array[i] = array[j];
+				array[j] = tmp;
 			}
 		}
 	}
-
+	
 	return array;
+	
 };
 
 
 __global__ 
 void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels, MedianFilterArgs args) {
-
+	
 	int row_l = threadIdx.y;
-	int col_l = threadIdx.x;
+	int col_l = threadIdx.x;;
 	int channel_l = threadIdx.z;
 	
 	int row_gl = blockDim.y * blockIdx.y + threadIdx.y;
@@ -147,61 +149,53 @@ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels,
 	int channels_gl = blockDim.z * blockIdx.z + threadIdx.z;
 
 	int count = 0;
+	uint32_t inRow, inCol;
 
-	uint32_t inRow, inCol, blockRow, blockCol;
+	__shared__ uint8_t window[MAX_WINDOW_WIDTH*MAX_WINDOW_HEIGHT*BLOCK_SIZE*BLOCK_SIZE*3];
 
-	// __shared__ uint8_t sharedmem[BLOCK_SIZE+2][BLOCK_SIZE+2];
+	int window_width = MAX_WINDOW_WIDTH*MAX_WINDOW_HEIGHT;
+	int window_height = BLOCK_SIZE*BLOCK_SIZE;
+	int window_depth = MAX_WINDOW_WIDTH*MAX_WINDOW_HEIGHT*BLOCK_SIZE*BLOCK_SIZE;
 
-	// __shared__ uint8_t window[MAX_WINDOW_SIZE][MAX_WINDOW_SIZE][3];
-	uint8_t window[MAX_WINDOW_SIZE];
-	uint8_t * sorted_window = window;
+	uint8_t* sorted_window = window;
 
-	// if row_l > 0 && row_l << BLOCK_SIZE && col_l > 0 && col_l < BLOCK_SIZE{
-	// 	sharedmem[row_l][col_l][channel_l] = inPixels[(row_gl * imgDim.width + col_gl) * imgDim.channels + channels_gl];
-	// }
-
-	// if ((tx_l == 0)&&((tx_g > 0))) smem[tx_l][ty_l+1] = Input_Image[ty_g*Image_Width + tx_g-1];      // --- left border
-    // else if ((tx_l == BLOCK_WIDTH-1)&&(tx_g < Image_Width - 1))         smem[tx_l+2][ty_l+1] = Input_Image[ty_g*Image_Width + tx_g+1];      // --- right border
-    // if ((ty_l == 0)&&(ty_g > 0)) {                                      smem[tx_l+1][ty_l]   = Input_Image[(ty_g-1)*Image_Width + tx_g];    // --- upper border
-    //         if ((tx_l == 0)&&((tx_g > 0)))                                  smem[tx_l]  [ty_l]   = Input_Image[(ty_g-1)*Image_Width + tx_g-1];  // --- top-left corner
-    //         else if ((tx_l == BLOCK_WIDTH-1)&&(tx_g < Image_Width - 1))     smem[tx_l+2][ty_l]   = Input_Image[(ty_g-1)*Image_Width + tx_g+1];  // --- top-right corner
-    //      } else if ((ty_l == BLOCK_HEIGHT-1)&&(ty_g < Image_Height - 1)) {  smem[tx_l+1][ty_l+2] = Input_Image[(ty_g+1)*Image_Width + tx_g];    // --- bottom border
-    //      if ((tx_l == 0)&&((tx_g > 0)))                                 smem[tx_l]  [ty_l+2] = Input_Image[(ty_g-1)*Image_Width + tx_g-1];  // --- bottom-left corder
-    //     else if ((tx_l == BLOCK_WIDTH-1)&&(tx_g < Image_Width - 1))     smem[tx_l+2][ty_l+2] = Input_Image[(ty_g+1)*Image_Width + tx_g+1];  // --- bottom-right corner
-    // }
-
-
-	// __syncthread();
-
-	if (col_gl < imgDim.width && row_gl < imgDim.height && channels_gl < 4) {
+	if (col_gl < imgDim.width && row_gl < imgDim.height && channels_gl < imgDim.channels) {
 		
 		for (uint32_t filRow = 0; filRow < args.filterH; ++ filRow) {
-			for (uint32_t filCol = 0; filCol < args.filterH; ++ filCol) {
+			for (uint32_t filCol = 0; filCol < args.filterW; ++ filCol) {
 				
-				// blockRow = row_l + filRow;
-				// blockCol = col_l + filCol;
+				inRow = row_gl - (int)(args.filterH-1)/2 + filRow;
+				inCol = col_gl - (int)(args.filterW-1)/2 + filCol;
 
-				inRow = row_gl - (args.filterH - 1)/2 + filRow;
-				inCol = col_gl - (args.filterW - 1)/2 + filCol;
 
-				if(inRow >= 0 && inRow < imgDim.height && 
-					inCol >= 0 && inCol < imgDim.width){
+				int row = (row_l*BLOCK_SIZE + col_l);
+				int col = count; 
 
-					// window[count] = sharedmem[inRow][inCol][channels_gl];
+				if(inRow < imgDim.height && inCol < imgDim.width){
 
-					window[count] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channels_gl];
-					count++;
+					window[ channel_l * window_depth + (row * window_width + col)] = inPixels[(inRow * imgDim.width + inCol) * imgDim.channels + channels_gl];
 
 				}
+				else{
+
+					window[ channel_l * window_depth + (row * window_width + col)] = 0;
+
+				}
+
+				count++;
 			}
 
 		}
 
+		__syncthreads();
+
 		dim3 arraydim(count);
 
-		sorted_window = sortPixels_gpu(sorted_window, arraydim);
+		uint8_t* array_for_thread = &window[channel_l * window_depth + (row_l*BLOCK_SIZE + col_l) * window_width];
 
-		outPixels[imgDim.channels*(row_gl* imgDim.width + col_gl) + channels_gl] = sorted_window[(args.filterH * args.filterW) / 2];
+		array_for_thread = sortPixels_gpu(array_for_thread, arraydim);
+
+		*(outPixels + (row_gl * imgDim.width + col_gl) * imgDim.channels + channels_gl) = array_for_thread[(args.filterH * args.filterW)/2];
 
 	}	
 }
@@ -212,8 +206,6 @@ int runGpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterAr
 	ImageDim imgDim;
 
 	uint8_t * imgData, * imgData_d;
-	
-	args = {7,7};
 
 	int bytesRead = loadBytesImage(imgPath, imgDim, &imgData);
 	int imgSize = imgDim.height * imgDim.width * imgDim.channels * imgDim.pixelSize;
@@ -228,6 +220,7 @@ int runGpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterAr
 
 	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE, 3);
     dim3 dimGrid(ceil((float)imgDim.width / (float)dimBlock.x), ceil((float)imgDim.height / (float)dimBlock.y));
+
 	medianFilter_gpu<<<dimGrid, dimBlock>>>(imgData_d, imgDim, outData_d, args);
 
 	cudaMemcpy(outData, outData_d, imgSize * sizeof(uint8_t), cudaMemcpyDeviceToHost);
@@ -261,8 +254,7 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 				row = (row_gl * args.strideH) + poolRow;
 				col = (col_gl * args.strideW) + poolCol;
 
-				if(row >= 0 && row < inShape.height && 
-						col >= 0 && col < inShape.width){
+				if(row < inShape.height && col < inShape.width){
 
 					float value = input[row * inShape.width + col];
 					
