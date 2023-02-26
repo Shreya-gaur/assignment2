@@ -405,10 +405,6 @@ int poolLayer_cpu (float * input, TensorShape inShape,
 }
 
 int runCpuPool (TensorShape inShape, PoolLayerArgs poolArgs) {
-	
-	// inShape = {4,4};
-	
-	poolArgs = {PoolOp::AvgPool, 4, 4, 1, 1};
 
 	srand(time(NULL));
 
@@ -465,22 +461,22 @@ int runCpuPool (TensorShape inShape, PoolLayerArgs poolArgs) {
 
 	std::chrono::duration<double> time_span = (tEnd- tStart);
 
-	// std::cout << "\nOutput" << "\n";
-	
-	// for(int ch = 0; ch < outShape.channels; ch++){
-
-	// 	std::cout<< "Channel: "<< ch << "\n";
-
-	// 	for (int i = 0; i < outShape.height; i++){
-	// 		for(int j = 0; j < outShape.width; j++){
-
-	// 			std::cout << outMatrix[ch * outShape.width * outShape.height + i * outShape.width + j] << " @ (" << i << ", " << j << ")" << "\n";
-
-	// 		}
-	// 	}
-	// }
-
 	std::cout << "\n It took " << time_span.count() << " seconds.";
+
+	std::cout << "\nOutput" << "\n";
+	
+	for(int ch = 0; ch < outShape.channels; ch++){
+
+		std::cout<< "Channel: "<< ch << "\n";
+
+		for (int i = 0; i < outShape.height; i++){
+			for(int j = 0; j < outShape.width; j++){
+
+				std::cout << outMatrix[ch * outShape.width * outShape.height + i * outShape.width + j] << " @ (" << i << ", " << j << ")" << "\n";
+
+			}
+		}
+	}
 
 	free(inMatrix);
 	free(outMatrix);

@@ -93,23 +93,18 @@ void query_device(){
 	else{
 
 		cudaError_t err_ThreadPerBlock = cudaDeviceGetAttribute(&maxThreadPerBlock, cudaDevAttrMaxThreadsPerBlock, 0);
- 		// printf("err = %d, %s\n", err_ThreadPerBlock, cudaGetErrorString(err_ThreadPerBlock));
   		printf("maxThreadPerBlock = %d\n", maxThreadPerBlock);
 		
 		cudaError_t err_BlockDim = cudaDeviceGetAttribute(&maxBlockDim, cudaDevAttrMaxBlockDimX, 0);
- 		// printf("err = %d, %s\n", err_BlockDim, cudaGetErrorString(err_BlockDim));
   		printf("maxBlockDim = %d\n", maxBlockDim);
 
 		cudaError_t err_sm = cudaDeviceGetAttribute(&maxSharedMemoryPerBlock, cudaDevAttrMaxSharedMemoryPerBlock, 0);
- 		// printf("err = %d, %s\n", err_BlockDim, cudaGetErrorString(err_BlockDim));
   		printf("maxSharedMemoryPerBlock = %d\n", maxSharedMemoryPerBlock);
 
 		cudaError_t err_GridDim = cudaDeviceGetAttribute(&maxGridDim, cudaDevAttrMaxGridDimX, 0);
- 		// printf("err = %d, %s\n", err_GridDim, cudaGetErrorString(err_GridDim));
   		printf("maxGridDim = %d\n", maxGridDim);
 
 		cudaError_t err_WarpSize = cudaDeviceGetAttribute(&maxWarpSize, cudaDevAttrWarpSize, 0);
- 		// printf("err = %d, %s\n", err_BlockDim, cudaGetErrorString(err_BlockDim));
   		printf("maxWarpSize = %d\n", maxWarpSize);
 
 	}
