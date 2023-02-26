@@ -199,8 +199,6 @@ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels,
 
 
 int runGpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterArgs args) {
-
-	args = {3,3};
 	
 	ImageDim imgDim;
 
