@@ -154,10 +154,7 @@ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels,
 	__shared__ uint8_t window[MAX_WINDOW_WIDTH*MAX_WINDOW_HEIGHT*BLOCK_SIZE*BLOCK_SIZE*3];
 
 	int window_width = MAX_WINDOW_WIDTH*MAX_WINDOW_HEIGHT;
-	int window_height = BLOCK_SIZE*BLOCK_SIZE;
 	int window_depth = MAX_WINDOW_WIDTH*MAX_WINDOW_HEIGHT*BLOCK_SIZE*BLOCK_SIZE;
-
-	uint8_t* sorted_window = window;
 
 	if (col_gl < imgDim.width && row_gl < imgDim.height && channels_gl < imgDim.channels) {
 		
@@ -203,6 +200,8 @@ void medianFilter_gpu (uint8_t * inPixels, ImageDim imgDim, uint8_t * outPixels,
 
 int runGpuMedianFilter (std::string imgPath, std::string outPath, MedianFilterArgs args) {
 
+	args = {3,3};
+	
 	ImageDim imgDim;
 
 	uint8_t * imgData, * imgData_d;
@@ -239,13 +238,22 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 
 	int row_gl = blockDim.y * blockIdx.y + threadIdx.y;
 	int col_gl = blockDim.x * blockIdx.x + threadIdx.x;
+	int channel_gl = blockDim.z * blockIdx.z + threadIdx.z;
 
 	uint32_t row, col;
 
-	if (col_gl < outShape.width && row_gl < outShape.height) {
+	float poolPick;
+
+	if (col_gl < outShape.width && row_gl < outShape.height && channel_gl < outShape.channels) {
 
 		//	STUDENT: Assign to first value of pool area
-		float poolPick = input[row_gl * args.strideH * inShape.width + col_gl * args.strideW];
+
+		if(args.opType == PoolOp::AvgPool){
+			poolPick = 0;	
+		}
+		else{
+			poolPick = input[channel_gl * inShape.width * inShape.height + row_gl * args.strideH * inShape.width + col_gl * args.strideW];
+		}
 
 		for (uint32_t poolRow = 0; poolRow < args.poolH; ++ poolRow) {
 			for (uint32_t poolCol = 0; poolCol < args.poolW; ++ poolCol) {
@@ -256,7 +264,7 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 
 				if(row < inShape.height && col < inShape.width){
 
-					float value = input[row * inShape.width + col];
+					float value = input[channel_gl * inShape.width * inShape.height + row * inShape.width + col];
 					
 					switch (args.opType)
 					{
@@ -280,7 +288,6 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 						case PoolOp::AvgPool:
 
 							poolPick += value;
-							poolPick = poolPick/(args.poolH * args.poolW);
 							break;
 
 						default:
@@ -291,7 +298,11 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 			}
 		}
 
-		output[row_gl * outShape.width + col_gl] = poolPick;
+		if(args.opType == PoolOp::AvgPool) poolPick = poolPick/(args.poolH * args.poolW);
+		
+		output[channel_gl * outShape.width * outShape.height + row_gl * outShape.width + col_gl] = poolPick;
+
+		// std::cout << poolPick << " @ (" << outRow << ", " << outCol << ")\n";
 
 	}
 }
@@ -300,8 +311,10 @@ void poolLayer_gpu (float * input, TensorShape inShape, float * output, TensorSh
 int runGpuPool (TensorShape inShape, PoolLayerArgs poolArgs){
 	
 	float *input_d, *output_d;
+
+	if (inShape.channels == 0) inShape.channels = 1;
 	
-	float* inMatrix = (float*) malloc(inShape.height * inShape.width * sizeof(float));
+	float* inMatrix = (float*) malloc(inShape.channels * inShape.height * inShape.width * sizeof(float));
 
 	if (inMatrix == NULL){
 		std::cout<< "ERROR ERROR!!!!! RUN FOR THE HILLS!!!!!";
@@ -316,7 +329,7 @@ int runGpuPool (TensorShape inShape, PoolLayerArgs poolArgs){
 
 	std::cout<< "Output Dimensions: " << outShape.height << " * " << outShape.width <<"\n";
 
-	float* outMatrix =  (float*) malloc(outShape.height * outShape.width * sizeof(float));
+	float* outMatrix =  (float*) malloc(outShape.channels * outShape.height * outShape.width * sizeof(float));
 
 	if (outMatrix == NULL){
 		std::cout<< "ERROR ERROR!!!!! RUN FOR THE HILLS!!!!!";
@@ -335,17 +348,22 @@ int runGpuPool (TensorShape inShape, PoolLayerArgs poolArgs){
 		return -1;
 	}
 
-	for (int i = 0; i < inShape.height; i++){
-		for(int j = 0; j < inShape.width; j++){
-			inMatrix[i * inShape.width + j] = (rand() / (RAND_MAX + 1.)) * 100;
-			// std::cout << inMatrix[i * inShape.width + j] << " ";
+	for (int ch=0; ch < inShape.channels; ch++){
+
+		std::cout<< "Channel: "<< ch << "\n";
+
+		for (int i = 0; i < inShape.height; i++){
+			for(int j = 0; j < inShape.width; j++){
+				inMatrix[ch * inShape.width * inShape.height + i * inShape.width + j] = (rand() / (RAND_MAX + 1.)) * 100;
+				std::cout << inMatrix[ch * inShape.width * inShape.height + i * inShape.width + j] << " ";
+			}
+			std::cout << "\n";
 		}
-		// std::cout << "\n";
 	}
 
 	cudaMemcpy(input_d, inMatrix, inShape.height * inShape.width * sizeof(float), cudaMemcpyHostToDevice);
 
-	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
+	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE, inShape.channels);
     dim3 dimGrid(ceil((float)outShape.width / (float)dimBlock.x), ceil((float)outShape.height / (float)dimBlock.y));
 
 	// STUDENT: call pool function
@@ -353,15 +371,19 @@ int runGpuPool (TensorShape inShape, PoolLayerArgs poolArgs){
 
 	cudaMemcpy(outMatrix, output_d, outShape.height * outShape.width * sizeof(float), cudaMemcpyDeviceToHost);
 
-	// for (int i = 0; i < outShape.height; i++){
-	// 	for(int j = 0; j < outShape.width; j++){
+	for (int ch=0; ch < inShape.channels; ch++){
 
-	// 		//  std::cout << outMatrix[i*outShape.width + j] << " ";
+		std::cout<< "Channel: "<< ch << "\n";
 
-	// 		// std::cout << outMatrix[i*outShape.width + j] << "@ (" << i << ", " << j << ")" << outShape.width << "\n";
-	// 	}
-	// 	// std::cout << "\n";
-	// }
+		for (int i = 0; i < outShape.height; i++){
+			for(int j = 0; j < outShape.width; j++){
+
+				std::cout << outMatrix[ch * outShape.width * outShape.height + i * outShape.width + j] << " @ (" << i << ", " << j << ")" << "\n";
+			
+			}
+			std::cout << "\n";
+		}
+	}
 	
 	free(inMatrix);
 	free(outMatrix);
